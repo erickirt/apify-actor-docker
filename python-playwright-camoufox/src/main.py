@@ -1,7 +1,7 @@
 import os
 from importlib.metadata import version
 
-from playwright.async_api import async_playwright
+from camoufox.async_api import AsyncCamoufox
 
 
 def print_warning():
@@ -17,6 +17,7 @@ def print_warning():
 
 def print_image_info():
     print(f"Playwright version: {version('playwright')}")
+    print(f"Camoufox version: {version('camoufox')}")
     print()
     print("Environment variables set in this image:")
     print("-" * 60)
@@ -27,23 +28,20 @@ def print_image_info():
     print()
 
 
-async def run_test(launcher, headless=True):
-    print(f"Testing {launcher.name} with {headless=}")
-    browser = await launcher.launch(headless=headless)
-    page = await browser.new_page()
-    await page.goto("http://www.example.com")
-    title = await page.title()
-    if title != "Example Domain":
-        raise Exception(f"Playwright test failed ({launcher.name}, {headless=}): got title {title!r}")
-    await browser.close()
+async def run_test(headless=True):
+    print(f"Testing Camoufox with {headless=}")
+    async with AsyncCamoufox(headless=headless) as browser:
+        page = await browser.new_page()
+        await page.goto("http://www.example.com")
+        title = await page.title()
+        if title != "Example Domain":
+            raise Exception(f"Camoufox test failed ({headless=}): got title {title!r}")
 
 
 async def main():
     print_warning()
     print_image_info()
-    async with async_playwright() as playwright:
-        print("Testing docker image by opening browsers...")
-        for launcher in [playwright.chromium, playwright.firefox, playwright.webkit]:
-            await run_test(launcher, headless=True)
-            await run_test(launcher, headless=False)
-        print("All browser tests passed.")
+    print("Testing docker image by opening Camoufox...")
+    await run_test(headless=True)
+    await run_test(headless=False)
+    print("All browser tests passed.")

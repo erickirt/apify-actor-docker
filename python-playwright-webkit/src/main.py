@@ -43,7 +43,6 @@ async def main():
     print_image_info()
     async with async_playwright() as playwright:
         print("Testing docker image by opening browsers...")
-        for launcher in [playwright.chromium, playwright.firefox, playwright.webkit]:
-            await run_test(launcher, headless=True)
-            await run_test(launcher, headless=False)
+        await run_test(playwright.webkit, headless=True)
+        await run_test(playwright.webkit, headless=False)
         print("All browser tests passed.")

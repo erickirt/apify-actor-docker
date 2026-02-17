@@ -1,12 +1,12 @@
 # Get the Python version provided as a build argument
 ARG PYTHON_VERSION=
 
-# Extend from the latest Debian and its slim version to keep the image as small as possible
+# Use trixie-slim to be consistent across python versions
 FROM --platform=linux/amd64 python:${PYTHON_VERSION}-slim-trixie
 
 # Add labels to the image to identify it as an Apify Actor
 LABEL maintainer="support@apify.com" \
-    description="Base image for Apify Actors written in Python using Playwright with all browsers"
+    description="Base image for Apify Actors written in Python using Playwright with only Firefox"
 
 # Get the Playwright version provided as a build argument
 ARG PLAYWRIGHT_VERSION=
@@ -43,8 +43,7 @@ ENV CRAWLEE_SKIP_BROWSER_INSTALL=1
 # Prevent playwright from downloading browsers when users install playwright via pip
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-# Sets path to Chrome executable
-ENV APIFY_CHROME_EXECUTABLE_PATH=/usr/bin/google-chrome
+ENV APIFY_DEFAULT_BROWSER_PATH=${PLAYWRIGHT_BROWSERS_PATH}/firefox
 
 # Copy the script for registering intermediate certificates and the pre-downloaded certificates
 COPY ./register_intermediate_certs.sh ./register_intermediate_certs.sh
@@ -58,39 +57,23 @@ RUN apt update \
     ca-certificates jq p11-kit \
     # Found this in other images, not sure whether it's needed, it does not come from Playwright deps
     procps \
-    # Packages for Google signing key
-    gnupg unzip \
-     # Add Google Linux signing key
-    && wget -qO- https://dl-ssl.google.com/linux/linux_signing_key.pub \
-        | gpg --dearmor \
-        | tee /usr/share/keyrings/google-linux-signing.gpg > /dev/null \
-    # Add Google Chrome APT repo
-    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-linux-signing.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' \
     && sh -c 'echo "deb http://ftp.us.debian.org/debian trixie main non-free" >> /etc/apt/sources.list.d/fonts.list' \
     && apt update \
     && apt install -y --no-install-recommends \
-    # Install Google Chrome
-    google-chrome-stable \
     # Extras
     fonts-freefont-ttf \
     fonts-kacst-one \
     fonts-thai-tlwg \
     fonts-wqy-zenhei \
     \
+    # Install Playwright browser OS dependencies
+    && python -m pip install playwright \
+    && python -m playwright install-deps firefox \
+    && python -m pip uninstall -y playwright \
+    \
     # Register certificates
     && chmod +x ./register_intermediate_certs.sh \
     && ./register_intermediate_certs.sh \
-    \
-    # Disable chrome auto updates, based on https://support.google.com/chrome/a/answer/9052345
-    && mkdir -p /etc/default && echo 'repo_add_once=false' > /etc/default/google-chrome \
-    && mkdir -p /etc/opt/chrome/policies/managed \
-    && echo '{ "CommandLineFlagSecurityWarningsEnabled": false }' > /etc/opt/chrome/policies/managed/managed_policies.json \
-    && echo '{ "ComponentUpdatesEnabled": false }' > /etc/opt/chrome/policies/managed/component_update.json \
-    \
-    # Install Playwright browser OS dependencies
-    && python -m pip install playwright \
-    && python -m playwright install-deps \
-    && python -m pip uninstall -y playwright \
     \
     # Add user so we don't need --no-sandbox.
     && groupadd -r myuser && useradd -r -g myuser -G audio,video myuser \
@@ -115,18 +98,18 @@ ENV PATH="/root/.local/bin:/home/myuser/.local/bin:$PATH"
 # - Upgrades pip to the latest version
 # - Preinstalls the latest versions of setuptools and wheel to improve package installation speed
 # - Installs the specified version of Playwright
-# - Prints out the Google Chrome version
 RUN python -m pip install --upgrade \
     pip \
     setuptools \
     wheel \
     playwright~=${PLAYWRIGHT_VERSION} \
     # Install Playwright browsers
-    && python -m playwright install \
-    # Override the dynamic library used by Firefox to determine trusted root certificates with p11-kit-trust.so, which loads the system certificates.
+    && python -m playwright install firefox \
+    # symlink the firefox binary to the root folder in order to bypass the versioning and resulting browser launch crashes.
+    && ln -s ${PLAYWRIGHT_BROWSERS_PATH}/firefox-*/firefox/firefox ${PLAYWRIGHT_BROWSERS_PATH}/ \
+    # Overrides the dynamic library used by Firefox to determine trusted root certificates with p11-kit-trust.so, which loads the system certificates.
     && rm -f $PLAYWRIGHT_BROWSERS_PATH/firefox-*/firefox/libnssckbi.so \
-    && ln -s /usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-trust.so $(ls -d $PLAYWRIGHT_BROWSERS_PATH/firefox-*)/firefox/libnssckbi.so \
-    && echo "Google Chrome version: $(bash -c "$APIFY_CHROME_EXECUTABLE_PATH --version")"
+    && ln -s /usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-trust.so $(ls -d $PLAYWRIGHT_BROWSERS_PATH/firefox-*)/firefox/libnssckbi.so
 
 # Copy the dummy source code to the image
 COPY --chown=myuser:myuser . .
